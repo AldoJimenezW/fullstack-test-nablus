@@ -33,28 +33,77 @@ export type OrdersResponse = {
 };
 
 export async function listOrders(_q: OrdersQuery): Promise<OrdersResponse> {
-  // TODO (candidato):
-  // 1) Obtener data desde getOrdersDb()
-  // 2) Aplicar filtros:
-  //    - status (si != 'all')
-  //    - q: buscar en id/customerName/customerRut (case-insensitive)
-  //    - from/to: issuedAt inclusivo (YYYY-MM-DD)
-  // 3) Mapear a OrderRow calculando vat/total con calcTotals()
-  // 4) Ordenar por issuedAt o total + dir asc/desc
-  // 5) Armar summary:
-  //    - count
-  //    - totalNet, totalVat, totalGross
-  //    - byStatus: conteo por cada estado
+  // 1) Obtener data
+  let orders = getOrdersDb();
+
+  // 2) Filtros
+  if (_q.status && _q.status !== "all") {
+    orders = orders.filter((o) => o.status === _q.status);
+  }
+
+  if (_q.q) {
+    const search = _q.q.toLowerCase();
+    orders = orders.filter(
+      (o) =>
+        o.id.toLowerCase().includes(search) ||
+        o.customerName.toLowerCase().includes(search) ||
+        o.customerRut.toLowerCase().includes(search)
+    );
+  }
+
+  if (_q.from) {
+    orders = orders.filter((o) => o.issuedAt >= _q.from!);
+  }
+
+  if (_q.to) {
+    orders = orders.filter((o) => o.issuedAt <= _q.to!);
+  }
+
+  // 3) Mapear a OrderRow
+  const rows: OrderRow[] = orders.map((o) => {
+    const { net, vat, total } = calcTotals(o);
+    return {
+      id: o.id,
+      customerName: o.customerName,
+      customerRut: o.customerRut,
+      issuedAt: o.issuedAt,
+      net,
+      vat,
+      total,
+      status: o.status,
+    };
+  });
+
+  // 4) Ordenar
+  const sortField = _q.sort ?? "issuedAt";
+  const dir = _q.dir ?? "asc";
+
+  rows.sort((a, b) => {
+    const aVal = a[sortField];
+    const bVal = b[sortField];
+    if (aVal < bVal) return dir === "asc" ? -1 : 1;
+    if (aVal > bVal) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+
+  // 5) Summary
+  const byStatus: Record<"pending" | "paid" | "canceled", number> = {
+    pending: 0,
+    paid: 0,
+    canceled: 0,
+  };
+  let totalNet = 0, totalVat = 0, totalGross = 0;
+
+  for (const row of rows) {
+    byStatus[row.status]++;
+    totalNet   += row.net;
+    totalVat   += row.vat;
+    totalGross += row.total;
+  }
 
   return {
-    data: [],
-    summary: {
-      count: 0,
-      totalNet: 0,
-      totalVat: 0,
-      totalGross: 0,
-      byStatus: { pending: 0, paid: 0, canceled: 0 },
-    },
+    data: rows,
+    summary: { count: rows.length, totalNet, totalVat, totalGross, byStatus },
   };
 }
 

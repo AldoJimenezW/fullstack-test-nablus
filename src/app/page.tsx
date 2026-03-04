@@ -61,10 +61,17 @@ export default function Page() {
   }, [url]);
 
   async function pay(id: string) {
-    // TODO (candidato):
-    // - POST /api/orders/:id/pay
-    // - manejar error (mostrarlo arriba)
-    // - refrescar (load) si ok
+    setError(null);
+    try {
+      const r = await fetch(`/api/orders/${id}/pay`, { method: "POST" });
+      if (!r.ok) {
+        const j = await r.json();
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
+      }
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? "Error");
+    }
   }
 
   return (
